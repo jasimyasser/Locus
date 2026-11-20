@@ -120,7 +120,11 @@ final class SpoofSession: ObservableObject {
         stopResend()
         stopHealth()
         isBusy = true
-        let result = LocationEngine.clear()
+        // forceClear reconnects if needed, so Stop works even after a relaunch.
+        let result = LocationEngine.forceClear(
+            pairingPath: pairing.pairingPath,
+            deviceIP: TunnelConfig.targetIP
+        )
         isBusy = false
         switch result {
         case .success:
@@ -136,6 +140,23 @@ final class SpoofSession: ObservableObject {
             postDropNotification(error.localizedDescription)
         }
     }
+
+
+    /// "Off switch" that always works: clears any leftover simulated location,
+    /// even one left behind by a previous app session.
+    func resetToRealLocation(pairing: PairingStore) {
+        guard pairing.hasPairingFile else {
+            lastError = "Import an RPPairing file in Settings first."
+            return
+        }
+        stop(pairing: pairing)
+        if status == .idle {
+            lastError = nil
+            resetMessage = "Back to your real location."
+        }
+    }
+
+    @Published var resetMessage: String?
 
     /// Best-known real device coordinate (not the teleport pin).
     var realCoordinate: CLLocationCoordinate2D? {

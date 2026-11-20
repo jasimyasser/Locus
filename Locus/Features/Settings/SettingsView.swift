@@ -96,6 +96,22 @@ struct SettingsView: View {
                     Text("Connect LocalDevVPN before teleporting. Default tunnel IP is 10.7.0.1. Start a spoof on Wi‑Fi first; it can keep working on cellular afterward.")
                 }
 
+                Section {
+                    Button(role: .destructive) {
+                        session.resetToRealLocation(pairing: pairing)
+                    } label: {
+                        Label("Reset to real location", systemImage: "location.slash.fill")
+                    }
+                    .disabled(!pairing.hasPairingFile || session.isBusy)
+                    if let msg = session.resetMessage {
+                        Text(msg).font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Off switch")
+                } footer: {
+                    Text("Turns spoofing off and returns every app (including Find My) to your real GPS. Use this if the map still shows a fake spot after the app was closed. LocalDevVPN must be connected. Restarting your iPhone also clears it.")
+                }
+
                 Section("Privacy") {
                     Text("Fully on-device. Favorites and recents stay in UserDefaults. No analytics, no accounts, nothing uploaded.")
                         .font(.footnote)

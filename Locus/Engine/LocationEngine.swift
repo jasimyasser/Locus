@@ -76,6 +76,24 @@ enum LocationEngine {
         return result
     }
 
+    /// Clears any simulated location, reconnecting first if this app session
+    /// has no live handle (e.g. the app was closed while spoofing).
+    static func forceClear(pairingPath: String, deviceIP: String) -> Result<Void, LocationEngineError> {
+        var result: Result<Void, LocationEngineError> = .failure(.locationClear)
+        queue.sync {
+            if locationSimulation == nil {
+                let connectCode = connectLocked(pairingPath: pairingPath, deviceIP: deviceIP)
+                guard connectCode == ok else {
+                    result = .failure(.from(code: connectCode))
+                    return
+                }
+            }
+            let code = clearLocked()
+            result = code == ok ? .success(()) : .failure(.from(code: code))
+        }
+        return result
+    }
+
     private static func cleanup() {
         if let locationSimulation {
             location_simulation_free(locationSimulation)
@@ -105,6 +123,19 @@ enum LocationEngine {
             }
         }
 
+        let connectCode = connectLocked(pairingPath: pairingPath, deviceIP: deviceIP)
+        guard connectCode == ok else { return connectCode }
+
+        if let setError = location_simulation_set(locationSimulation, latitude, longitude) {
+            idevice_error_free(setError)
+            cleanup()
+            return locationSet
+        }
+        return ok
+    }
+
+    /// Opens the developer tunnel and creates a location-simulation handle.
+    private static func connectLocked(pairingPath: String, deviceIP: String) -> Int32 {
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = in_port_t(49152).bigEndian
@@ -153,11 +184,6 @@ enum LocationEngine {
         // location_simulation_new consumes/owns remote server lifecycle alongside handle
         remoteServer = nil
 
-        if let setError = location_simulation_set(locationSimulation, latitude, longitude) {
-            idevice_error_free(setError)
-            cleanup()
-            return locationSet
-        }
         return ok
     }
 
