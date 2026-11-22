@@ -193,6 +193,8 @@ struct BottomControlsView: View {
                 Spacer(minLength: 0)
             }
 
+            SpeedSliderRow(mode: session.travelMode)
+
             HStack(spacing: 10) {
                 trayIcon("gearshape.fill") { showSettings = true }
                 trayIcon("star.fill") { showPlaces = true }
@@ -289,5 +291,38 @@ struct IconButton: View {
         .buttonStyle(.plain)
         .locusGlass(.interactive, in: Circle())
         .foregroundStyle(.primary)
+    }
+}
+
+
+/// Per-mode speed slider shown under the travel-mode buttons.
+struct SpeedSliderRow: View {
+    @EnvironmentObject private var session: SpoofSession
+    let mode: TravelMode
+
+    var body: some View {
+        let binding = Binding<Double>(
+            get: { session.speedMPH(for: mode) },
+            set: { session.setSpeedMPH($0, for: mode) }
+        )
+        HStack(spacing: 10) {
+            Image(systemName: "speedometer")
+                .foregroundStyle(.secondary)
+            Slider(value: binding, in: mode.speedRangeMPH, step: 1)
+                .tint(LocusTheme.accent)
+            Text("\(Int(session.speedMPH(for: mode))) mph")
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .frame(minWidth: 64, alignment: .trailing)
+            Button {
+                session.resetSpeed(for: mode)
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Reset \(mode.title) speed")
+        }
     }
 }

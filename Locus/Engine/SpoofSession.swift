@@ -37,6 +37,19 @@ enum TravelMode: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Slider range for this mode, in miles per hour.
+    var speedRangeMPH: ClosedRange<Double> {
+        switch self {
+        case .walk: return 1...8
+        case .run: return 3...15
+        case .cycle: return 5...35
+        case .drive: return 10...120
+        }
+    }
+
+    /// Default slider value (matches the original base speed).
+    var defaultMPH: Double { (baseSpeed * 2.236936).rounded() }
+
     var mkTransportType: MKDirectionsTransportType {
         switch self {
         case .walk, .run: return .walking
@@ -74,6 +87,9 @@ final class SpoofSession: ObservableObject {
     @Published var pin: CLLocationCoordinate2D?
     @Published var simulated: CLLocationCoordinate2D?
     @Published var travelMode: TravelMode = .walk
+    /// User-chosen speed per mode (mph), persisted.
+    @Published private(set) var customMPH: [String: Double] = [:]
+    private let speedKey = "locus.speedMPH"
     @Published var mapStyleIndex: Int = 0
     @Published var lastError: String?
     @Published var isBusy = false
@@ -94,8 +110,29 @@ final class SpoofSession: ObservableObject {
     private let recentsKey = "locus.recents"
 
     init() {
+        customMPH = (UserDefaults.standard.dictionary(forKey: speedKey) as? [String: Double]) ?? [:]
         favorites = SavedPlace.load(key: favoritesKey)
         recents = SavedPlace.load(key: recentsKey)
+    }
+
+    func speedMPH(for mode: TravelMode) -> Double {
+        let value = customMPH[mode.rawValue] ?? mode.defaultMPH
+        return min(max(value, mode.speedRangeMPH.lowerBound), mode.speedRangeMPH.upperBound)
+    }
+
+    func setSpeedMPH(_ mph: Double, for mode: TravelMode) {
+        customMPH[mode.rawValue] = mph.rounded()
+        UserDefaults.standard.set(customMPH, forKey: speedKey)
+    }
+
+    func resetSpeed(for mode: TravelMode) {
+        customMPH[mode.rawValue] = nil
+        UserDefaults.standard.set(customMPH, forKey: speedKey)
+    }
+
+    /// Current speed in meters per second for a mode.
+    func speed(for mode: TravelMode) -> CLLocationSpeed {
+        speedMPH(for: mode) / 2.236936
     }
 
     var isSpoofing: Bool {
@@ -216,7 +253,9 @@ final class SpoofSession: ObservableObject {
                 if Task.isCancelled { break }
                 let distance = CLLocation(latitude: previous.latitude, longitude: previous.longitude)
                     .distance(from: CLLocation(latitude: next.latitude, longitude: next.longitude))
-                var speed = mode.baseSpeed * Double.random(in: 0.88...1.12)
+                // Read live so moving the slider mid-route takes effect.
+                let base = await MainActor.run { self.speed(for: mode) }
+                var speed = base * Double.random(in: 0.88...1.12)
                 speed = max(0.8, speed)
                 let stepMeters: CLLocationDistance = min(12, max(4, speed * 0.5))
                 let steps = max(1, Int(ceil(distance / stepMeters)))
@@ -350,7 +389,7 @@ final class SpoofSession: ObservableObject {
         guard magnitude > 0.08 else { return }
         let nx = joystickVector.dx / magnitude
         let ny = -joystickVector.dy / magnitude
-        let speed = travelMode.baseSpeed * min(1.0, magnitude) * Double.random(in: 0.9...1.1)
+        let speed = self.speed(for: travelMode) * min(1.0, magnitude) * Double.random(in: 0.9...1.1)
         let dt = 0.25
         let meters = speed * dt
         let next = offset(coordinate: current, eastMeters: nx * meters, northMeters: ny * meters)
